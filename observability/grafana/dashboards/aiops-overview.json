@@ -1,0 +1,148 @@
+{
+  "title": "AIOps Platform — Incident Overview",
+  "uid": "aiops-overview",
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "title": "Payment API — Error Rate",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.05}, {"color": "red", "value": 0.10}]}
+        }
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(http_requests_total{service=\"payment-api\",status=~\"5..\"}[5m]) / rate(http_requests_total{service=\"payment-api\"}[5m])", "legendFormat": "Error Rate"}]
+    },
+    {
+      "id": 2, "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "title": "MongoDB Connection Errors",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}
+        }
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mongodb_connection_errors_total[2m])", "legendFormat": "Errors/s"}]
+    },
+    {
+      "id": 3, "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "title": "Claude API Cost Today",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1.0}]}
+        }
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(claude_api_cost_usd_total[24h])", "legendFormat": "Cost USD"}]
+    },
+    {
+      "id": 4, "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "title": "Incidents Processed Today",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "blue", "value": null}]}}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(aiops_incidents_processed_total[24h])", "legendFormat": "Incidents"}]
+    },
+    {
+      "id": 5, "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+      "title": "Avg RCA Generation Time",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 90}]}
+        }
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.50, rate(aiops_rca_generation_seconds_bucket[1h]))", "legendFormat": "Median RCA Time"}]
+    },
+    {
+      "id": 6, "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+      "title": "Predictive Alerts Fired",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "green", "value": null}]}}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(aiops_predictive_alerts_total[24h])", "legendFormat": "Predictive Alerts"}]
+    },
+    {
+      "id": 7, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "title": "HTTP Error Rate Over Time — All Services",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {"lineWidth": 2, "fillOpacity": 10},
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 0.10}]}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m])", "legendFormat": "{{service}} error rate"}
+      ]
+    },
+    {
+      "id": 8, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "title": "MongoDB Connection Errors Over Time",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"lineWidth": 2, "fillOpacity": 20},
+          "color": {"mode": "fixed", "fixedColor": "red"}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(mongodb_connection_errors_total[1m])", "legendFormat": "Connection errors/s — {{namespace}}"}
+      ]
+    },
+    {
+      "id": 9, "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "title": "Error Logs — All Services (Loki)",
+      "type": "logs",
+      "options": {"dedupStrategy": "none", "showLabels": true, "wrapLogMessage": true, "sortOrder": "Descending"},
+      "targets": [
+        {"datasource": {"type": "loki", "uid": "loki"}, "expr": "{service=~\"payment-api|mongodb-simulator\"} |= \"error\" or \"ERROR\" or \"FAILED\"", "legendFormat": ""}
+      ]
+    },
+    {
+      "id": 10, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "title": "HTTP Request Latency (p99) Over Time",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {"lineWidth": 2},
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 2.0}]}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))", "legendFormat": "p99 — {{service}}"}
+      ]
+    },
+    {
+      "id": 11, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "title": "AI Engine — Tokens Used Per Call",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"lineWidth": 2, "fillOpacity": 10}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(claude_api_input_tokens_total[5m])", "legendFormat": "Input tokens/s — {{use_case}}"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(claude_api_output_tokens_total[5m])", "legendFormat": "Output tokens/s — {{use_case}}"}
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "tags": ["aiops", "incidents", "sre"]
+}

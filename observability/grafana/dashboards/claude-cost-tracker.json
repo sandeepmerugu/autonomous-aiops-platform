@@ -1,0 +1,113 @@
+{
+  "title": "Claude API — Cost & Usage Tracker",
+  "uid": "claude-cost",
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-24h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "title": "Total Cost — Last 24h",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.50}, {"color": "red", "value": 2.0}]},
+          "decimals": 4
+        }
+      },
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(claude_api_cost_usd_total[24h])", "legendFormat": "Total Cost"}]
+    },
+    {
+      "id": 2, "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "title": "Total Tokens — Last 24h",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "blue", "value": null}]}}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(claude_api_input_tokens_total[24h]) + increase(claude_api_output_tokens_total[24h])", "legendFormat": "Total Tokens"}
+      ]
+    },
+    {
+      "id": 3, "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "title": "API Calls — Last 24h",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "targets": [{"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(claude_api_calls_total{status=\"success\"}[24h])", "legendFormat": "Successful Calls"}]
+    },
+    {
+      "id": 4, "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "title": "Avg Cost Per RCA",
+      "type": "stat",
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"},
+         "expr": "increase(claude_api_cost_usd_total{use_case=\"incident_rca\"}[24h]) / clamp_min(increase(aiops_incidents_processed_total[24h]), 1)",
+         "legendFormat": "Avg Cost/RCA"}
+      ]
+    },
+    {
+      "id": 5, "gridPos": {"h": 8, "w": 16, "x": 0, "y": 4},
+      "title": "Claude API Cost Over Time",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "custom": {"lineWidth": 2, "fillOpacity": 20, "gradientMode": "scheme"},
+          "color": {"mode": "palette-classic"}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(claude_api_cost_usd_total[5m]) * 3600", "legendFormat": "Cost/hour — {{use_case}}"}
+      ]
+    },
+    {
+      "id": 6, "gridPos": {"h": 8, "w": 8, "x": 16, "y": 4},
+      "title": "Cost by Use Case (24h)",
+      "type": "piechart",
+      "options": {"displayLabels": ["name", "percent"]},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 4}},
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "increase(claude_api_cost_usd_total[24h])", "legendFormat": "{{use_case}}"}
+      ]
+    },
+    {
+      "id": 7, "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "title": "Token Usage Over Time",
+      "type": "timeseries",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"lineWidth": 2, "fillOpacity": 10}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(claude_api_input_tokens_total[5m])", "legendFormat": "Input tokens/s"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "rate(claude_api_output_tokens_total[5m])", "legendFormat": "Output tokens/s"}
+      ]
+    },
+    {
+      "id": 8, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "title": "RCA Generation Duration",
+      "type": "timeseries",
+      "description": "Time from alert received to RCA posted. Target: under 90 seconds.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {"lineWidth": 2},
+          "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 90}]}
+        }
+      },
+      "targets": [
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.50, rate(aiops_rca_generation_seconds_bucket[5m]))", "legendFormat": "p50 RCA time"},
+        {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "histogram_quantile(0.95, rate(aiops_rca_generation_seconds_bucket[5m]))", "legendFormat": "p95 RCA time"}
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "tags": ["aiops", "claude", "cost", "llmops"]
+}

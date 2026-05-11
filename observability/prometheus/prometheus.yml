@@ -1,0 +1,52 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'aiops-demo'
+    env:     'local'
+
+# Load alert rules
+rule_files:
+  - /etc/prometheus/alert-rules.yml
+
+# Send alerts to our AI engine webhook
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []   # Using Grafana alerting instead of Alertmanager
+
+# ── SCRAPE CONFIGS ────────────────────────────────────────────
+scrape_configs:
+
+  # Prometheus itself
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # AI Engine (cost tracking metrics)
+  - job_name: aiops-engine
+    static_configs:
+      - targets: ['aiops-engine:8000']
+    metrics_path: /metrics
+
+  # Payment API (sample app 1)
+  - job_name: payment-api
+    static_configs:
+      - targets: ['payment-api:8001']
+    metrics_path: /metrics
+    relabel_configs:
+      - target_label: service
+        replacement:  payment-api
+      - target_label: namespace
+        replacement:  default
+
+  # MongoDB Simulator (sample app 2)
+  - job_name: mongodb-simulator
+    static_configs:
+      - targets: ['mongodb-simulator:8002']
+    metrics_path: /metrics
+    relabel_configs:
+      - target_label: service
+        replacement:  mongodb-simulator
+      - target_label: namespace
+        replacement:  default

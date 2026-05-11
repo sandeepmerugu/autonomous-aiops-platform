@@ -1,0 +1,209 @@
+version: "3.9"
+
+# ============================================================
+# Autonomous AIOps Platform — Docker Compose
+#
+# QUICK START:
+#   cp .env.example .env
+#   # Add ANTHROPIC_API_KEY to .env
+#   docker compose up -d
+#   open http://localhost:3000   # Grafana (admin/admin123)
+#   open http://localhost:8000/incidents/ui  # AIOps Dashboard
+#
+# SERVICES:
+#   prometheus       :9090  — metrics collection
+#   grafana          :3000  — dashboards & alerting
+#   loki             :3100  — log aggregation
+#   promtail               — Docker log collector → Loki
+#   payment-api      :8001  — sample service with real metrics
+#   mongodb-simulator:8002  — MongoDB incident simulation
+#   aiops-engine     :8000  — AI brain (Claude RCA + web UI)
+# ============================================================
+
+networks:
+  aiops-net:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+services:
+
+  # ── PROMETHEUS ─────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    networks: [aiops-net]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle          # allows hot-reload: POST /-/reload
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --web.console.templates=/etc/prometheus/consoles
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── GRAFANA ────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    networks: [aiops-net]
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Enable Grafana alerting (sends webhooks to AI engine)
+      - GF_ALERTING_ENABLED=true
+      - GF_UNIFIED_ALERTING_ENABLED=true
+      # Allow loading dashboards from local files
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/aiops-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── LOKI ───────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: loki
+    networks: [aiops-net]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yml
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── PROMTAIL ───────────────────────────────────────────────
+  # Collects Docker container logs and ships them to Loki
+  promtail:
+    image: grafana/promtail:2.9.6
+    container_name: promtail
+    networks: [aiops-net]
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker log discovery
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PAYMENT API (Sample App 1) ─────────────────────────────
+  payment-api:
+    build:
+      context: ./sample-apps/payment-api
+      dockerfile: Dockerfile
+    container_name: payment-api
+    networks: [aiops-net]
+    ports:
+      - "8001:8001"
+    environment:
+      - ERROR_RATE=0.05          # 5% error rate — change to 1.0 for incident demo
+      - BASE_LATENCY_MS=50
+      - NAMESPACE=default
+    restart: unless-stopped
+    labels:
+      com.docker.compose.service: payment-api
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── MONGODB SIMULATOR (Sample App 2) ──────────────────────
+  mongodb-simulator:
+    build:
+      context: ./sample-apps/mongodb-simulator
+      dockerfile: Dockerfile
+    container_name: mongodb-simulator
+    networks: [aiops-net]
+    ports:
+      - "8002:8002"
+    environment:
+      - NAMESPACE=default
+    restart: unless-stopped
+    labels:
+      com.docker.compose.service: mongodb-simulator
+
+  # ── AIOPS ENGINE (The AI Brain) ────────────────────────────
+  aiops-engine:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: aiops-engine
+    networks: [aiops-net]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env                           # loads ANTHROPIC_API_KEY etc.
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - LOKI_URL=http://loki:3100
+      - GRAFANA_URL=http://grafana:3000
+      - GRAFANA_USER=admin
+      - GRAFANA_PASSWORD=admin123
+      - AIOPS_ENGINE_URL=http://aiops-engine:8000
+      - DB_PATH=/tmp/incidents.db
+    depends_on:
+      grafana:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    labels:
+      com.docker.compose.service: aiops-engine
+
+  # ── PREDICTIVE MONITOR ─────────────────────────────────────
+  # Runs the forecasting loop every 60 seconds
+  predictive-monitor:
+    build:
+      context: ./ai-engine
+      dockerfile: Dockerfile
+    container_name: predictive-monitor
+    networks: [aiops-net]
+    env_file:
+      - .env
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      - AIOPS_ENGINE_URL=http://aiops-engine:8000
+      - PREDICT_INTERVAL_SECONDS=60
+    command: ["python", "predictive_monitor.py", "--loop"]
+    depends_on:
+      - prometheus
+      - aiops-engine
+    restart: unless-stopped
+    labels:
+      com.docker.compose.service: predictive-monitor
